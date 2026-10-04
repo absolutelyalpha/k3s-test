@@ -1,60 +1,80 @@
 # shared-k3s-cluster
 
-One-shot Kubernetes cluster on the Railway VM `dev.new`, plus a Helm chart so you can
-deploy into the same cluster from your own machine.
+One-shot Kubernetes cluster on the Railway VM `dev.new`, plus a Helm chart so anyone can
+deploy into the same cluster from their own machine.
 
-- `scripts/setup-k3s.sh` - provisions the whole cluster from nothing (~3 min, idempotent)
+- `scripts/setup-k3s.sh` - provisions the entire cluster from nothing (~3 min, idempotent)
 - `scripts/friend-connect.sh` - fetches a working kubeconfig and verifies it
+- `scripts/kubectl-remote.sh` / `scripts/helm-remote.sh` - run kubectl/helm over ssh, no
+  kubeconfig or open port needed
 - `charts/demo-app` - small app chart (Deployment + Service + optional Ingress)
 
-## 1. Bootstrap the cluster (only if the VM was replaced)
+Only port 22 (ssh) is publicly reachable on the VM, so there are two ways in:
+**over ssh** (always works) or **through an ssh tunnel** (gives you a normal kubeconfig).
+
+## 1. Bootstrap the cluster (only needed after the VM was replaced)
 
 ```bash
 scp scripts/setup-k3s.sh dev.new:/root/setup-k3s.sh
 ssh dev.new 'bash /root/setup-k3s.sh'
 ```
 
-The script handles what this sandbox does not support out of the box:
+What the script works around in this sandbox:
 
-| Problem | What the script does |
+| Problem here | What the script does |
 | --- | --- |
-| no systemd/openrc | runs k3s under a supervisor loop that restarts it |
-| kernel has no vxlan | `--flannel-backend=none` + bridge CNI |
+| no systemd / openrc | runs k3s under a supervisor loop that restarts it |
+| kernel has no vxlan support | `--flannel-backend=none` + bridge CNI |
 | no legacy iptables tables | kube-proxy in nftables mode, ServiceLB disabled |
-| bridge CNI sets no gateway | pre-creates `cni0` with `10.42.0.1/24`, watchdog keeps it |
-| no SNAT for pods | own nftables table `ip pod-egress` |
-| host DNS is IPv6-only | CoreDNS forwards to `1.1.1.1` / `8.8.8.8` |
+| bridge CNI adds no gateway route | pre-creates `cni0` with `10.42.0.1/24`; a watchdog keeps it |
+| no SNAT for pod traffic | own nftables table `ip pod-egress` |
+| host resolver is IPv6-only | CoreDNS forwards to `1.1.1.1` / `8.8.8.8` |
 
 ## 2. Connect from your machine
 
+### Option A - ssh wrappers (needs only ssh access)
+
 ```bash
-git clone <this repo>
-cd shared-k3s-cluster
-./scripts/friend-connect.sh dev.new
+./scripts/kubectl-remote.sh get nodes
+./scripts/helm-remote.sh list -A
+./scripts/helm-remote.sh install myapp ./charts/demo-app
+```
+
+### Option B - real kubeconfig through an ssh tunnel
+
+```bash
+./scripts/friend-connect.sh dev.new     # defaults to host dev.new
 export KUBECONFIG=$PWD/kubeconfig.yaml
 kubectl get nodes
 ```
 
-`friend-connect.sh` copies `/root/kubeconfig-share.yaml` off the VM, tries a direct
-connection, and falls back to `ssh -L 6443:127.0.0.1:6443 dev.new` when the API server
-port is not reachable from outside.
+It copies `/root/kubeconfig-share.yaml` off the VM, tries a direct connection first, and
+otherwise opens `ssh -L 6443:127.0.0.1:6443 dev.new` and points the kubeconfig at
+`127.0.0.1:6443`. If the tunnel cannot be established it tells you to use option A.
 
 ## 3. Deploy the chart
 
 ```bash
 helm install myapp ./charts/demo-app
 kubectl get pods -w
-kubectl get svc myapp          # NodePort -> tunnel it: ssh -L 8080:127.0.0.1:<nodePort> dev.new
+kubectl get svc myapp     # NodePort; reach it with: ssh -L 8080:127.0.0.1:<nodePort> dev.new
 ```
 
-Configurable via `--set`: `replicaCount`, `image.repository`, `image.tag`,
-`service.type=ClusterIP`, `ingress.enabled=true`, `ingress.host=...`.
+Common overrides:
+
+```bash
+helm install myapp ./charts/demo-app \
+  --set replicaCount=3 \
+  --set image.repository=nginx --set image.tag=1.29-alpine \
+  --set service.type=ClusterIP \
+  --set ingress.enabled=true --set ingress.host=demo.example.com
+```
+
+Uninstall with `helm uninstall myapp`.
 
 ## Notes
 
-- Single node, so the chart is for sharing this one cluster; the bridge CNI has no
-  overlay network for multi-node.
-- Everything else (CoreDNS, Traefik, metrics-server, local-path storage) comes up with
-  the cluster.
-- If k3s ever dies, the supervisor restarts it; if the whole VM is replaced, re-run
-  `setup-k3s.sh`.
+- Single node. The bridge CNI has no overlay network, so this is for one VM, not many.
+- CoreDNS, Traefik, metrics-server and local-path storage all come up with the cluster.
+- If k3s dies, the supervisor restarts it. If Railway replaces the VM, re-run
+  `setup-k3s.sh` and everything is back in about three minutes.

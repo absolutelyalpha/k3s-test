@@ -1,0 +1,27 @@
+replicaCount: 2
+
+image:
+  repository: nginx
+  tag: "1.29-alpine"
+  pullPolicy: IfNotPresent
+
+service:
+  # NodePort works everywhere. Use ClusterIP if you only reach it from other pods.
+  type: NodePort
+  port: 80
+
+ingress:
+  enabled: false
+  className: traefik
+  host: demo.example.com
+
+# extra env for the app container, e.g. [{name: FOO, value: bar}]
+env: []
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi

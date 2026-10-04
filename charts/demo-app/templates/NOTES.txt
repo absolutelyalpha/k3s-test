@@ -1,0 +1,20 @@
+{{ .Chart.Name }} {{ .Chart.Version }} released as {{ .Release.Name }} in namespace {{ .Release.Namespace }}.
+
+Replicas: {{ .Values.replicaCount }}  Image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+
+1. Watch it come up:
+     kubectl --kubeconfig ./kubeconfig.yaml get pods -w
+
+2. Find the service endpoint:
+     kubectl --kubeconfig ./kubeconfig.yaml get svc {{ .Release.Name }}
+
+   If the service type is NodePort, reach it from your machine over the tunnel:
+     ssh -L 8080:127.0.0.1:<nodePort> <vm>
+     open http://127.0.0.1:8080
+
+3. From inside the cluster (e.g. through the traefik ingress):
+     kubectl --kubeconfig ./kubeconfig.yaml run curl --rm -i --restart=Never \
+       --image=curlimages/curl -- curl -s http://{{ .Release.Name }}.{{ .Release.Namespace }}.svc.cluster.local
+
+Uninstall:
+     helm --kubeconfig ./kubeconfig.yaml uninstall {{ .Release.Name }} -n {{ .Release.Namespace }}

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: demo-app
+description: Minimal app chart for the shared k3s cluster running on dev.new
+type: application
+version: 0.1.0
+appVersion: "1.0"

@@ -1,0 +1,14 @@
+# Force LF line endings on check-out. Shell scripts with CRLF break on Linux,
+# which is where they actually run.
+* text=auto eol=lf
+
+*.sh text eol=lf
+*.md text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.txt text eol=lf
+*.nft text eol=lf
+.gitignore text eol=lf
+.helmignore text eol=lf
+kubeconfig.yaml -text
+*.kubeconfig -text

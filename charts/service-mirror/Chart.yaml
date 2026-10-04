@@ -1,0 +1,9 @@
+apiVersion: v2
+name: service-mirror
+description: >-
+  Consume a service that runs in another Kubernetes cluster. Creates a Service
+  with no selector plus an EndpointSlice pointing at reachable addresses (a mesh
+  tunnel on this node, or a routable pod/node IP of the peer cluster).
+type: application
+version: 0.1.0
+appVersion: "1.0"

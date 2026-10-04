@@ -1,0 +1,78 @@
+{{- $svc := default .Release.Name .Values.name }}
+{{- /* accept a real list or a comma separated string */ -}}
+{{- $addrs := .Values.addresses }}
+{{- if kindIs "string" $addrs }}{{ $addrs = splitList "," $addrs }}{{ end }}
+{{- /*
+  Headless mode (default, and the one that is verified on this k3s build):
+  the Service has clusterIP None, so CoreDNS hands the peer addresses out as A
+  records and clients connect straight to the other cluster. Nothing is
+  programmed by kube-proxy, which matters because k3s 1.37 in nftables proxy
+  mode silently ignores hand written EndpointSlices for ClusterIP services.
+
+  ClusterIP mode (headless: false) gives port translation (port -> targetPort)
+  and kube-proxy load balancing, but only works where kube-proxy accepts a
+  hand written EndpointSlice: true on most clusters, false on k3s 1.37 + nftables.
+
+  Either way one EndpointSlice carries one port, so mirror once per port.
+*/ -}}
+{{- $port := .Values.targetPort }}
+{{- if .Values.headless }}{{ $port = .Values.port }}{{ end }}
+{{- $ips := list }}
+{{- range $a := $addrs }}
+  {{- $parts := splitList ":" $a }}
+  {{- if gt (len $parts) 1 }}
+    {{- if ne (last $parts) (printf "%v" $port) }}
+      {{- fail (printf "address %q carries port %s but the mirror listens on %s: one EndpointSlice has one port, so install a second mirror for the other port" $a (last $parts) (printf "%v" $port)) }}
+    {{- end }}
+  {{- end }}
+  {{- $ips = append $ips (first $parts) }}
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $svc }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: service-mirror
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    k8s-app: cross-cluster-mirror
+    {{- with .Values.serviceLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.serviceAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+{{- if .Values.headless }}
+  # headless: DNS resolves to the peer addresses below, no kube-proxy in the path
+  clusterIP: None
+{{- end }}
+  # no selector on purpose: the backing endpoints are listed in the
+  # EndpointSlice below and they live in the other cluster
+  sessionAffinity: {{ .Values.sessionAffinity }}
+  ports:
+    - name: http
+      port: {{ .Values.port }}
+      targetPort: {{ $port }}
+      protocol: {{ .Values.protocol }}
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: {{ $svc }}-mirror
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: service-mirror
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    kubernetes.io/service-name: {{ $svc }}
+addressType: {{ .Values.addressType }}
+ports:
+  - name: http
+    port: {{ $port }}
+    protocol: {{ .Values.protocol }}
+endpoints:
+  {{- range $ip := $ips }}
+  - addresses:
+      - {{ $ip }}
+  {{- end }}

@@ -1,0 +1,44 @@
+# name of the mirrored service (defaults to the release name)
+name: ""
+
+# namespace the mirror is created in
+namespace: default
+
+# headless: true (default, verified on this k3s build)
+#   Service has clusterIP: None, CoreDNS returns the peer addresses directly and
+#   clients connect straight to the other cluster. No kube-proxy in the path.
+#   Consequence: clients must use the peer's real port (port below).
+# headless: false
+#   normal ClusterIP, so port -> targetPort translation and kube-proxy load
+#   balancing work, but k3s 1.37 with kube-proxy in nftables mode does NOT
+#   program hand written EndpointSlices, so this only works on clusters whose
+#   kube-proxy accepts them (most non-k3s clusters).
+headless: true
+
+# port clients use inside this cluster
+port: 80
+
+# port of the endpoints; in headless mode this is forced to port, since there is
+# no proxy to translate anything
+targetPort: 80
+
+# protocol: TCP or UDP
+protocol: TCP
+
+# endpoints that belong to the OTHER cluster: "IP" or "IP:PORT".
+# When a port is given it must match the port the mirror listens on.
+#   addresses: "10.250.0.7:30269"                # peer node IP + NodePort
+#   addresses: "10.44.0.5,10.44.0.6"            # peer pod IPs over a routed mesh
+#   addresses:                              # peer replicas, same port
+#     - 10.44.0.5:8080
+#     - 10.44.0.6:8080
+addresses: []
+
+# addressType: IPv4 | IPv6 | FQDN
+addressType: IPv4
+
+# sessionAffinity: None | ClientIP
+sessionAffinity: None
+
+serviceLabels: {}
+serviceAnnotations: {}
